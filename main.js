@@ -322,3 +322,13 @@ app.on('activate', () => {
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
+
+ipcMain.handle('show-dialog', async (event, options) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, options || {});
+    return result;
+  } catch (error) {
+    console.error('Error en show-dialog:', error);
+    return { canceled: true, filePaths: [] };
+  }
+});

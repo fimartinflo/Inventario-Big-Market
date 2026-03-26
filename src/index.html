@@ -148,7 +148,7 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            z-index: 1000;
+            z-index: 9999;
             display: none;
             border-left: 4px solid var(--secondary-color);
         }
@@ -190,7 +190,6 @@
         
         .sale-item {
             border-bottom: 1px solid #dee2e6;
-            padding: 12px 0;
             background: var(--card-bg);
             margin-bottom: 8px;
             border-radius: 6px;
@@ -1199,6 +1198,7 @@
     let variablePriceProduct = null;
     let searchTimeout = null;
     let isInitialized = false;
+    let inventoryTableClickHandler = null;
     
     // =============================================
     // FUNCIONES DE INICIALIZACIÓN SEGURA
@@ -1723,30 +1723,31 @@
     // Agregar eventos de editar y eliminar - MEJORADA
     function addEditDeleteEvents() {
         try {
-            // Usar delegación de eventos para evitar duplicados
             const inventoryTable = document.getElementById('inventory-table');
             if (!inventoryTable) return;
-            
-            // Remover listeners anteriores si existen
-            inventoryTable.removeEventListener('click', handleInventoryTableClick);
-            
-            // Agregar nuevo listener
-            inventoryTable.addEventListener('click', handleInventoryTableClick);
-            
-            function handleInventoryTableClick(e) {
+
+            // Remover listener anterior usando referencia guardada
+            if (inventoryTableClickHandler) {
+                inventoryTable.removeEventListener('click', inventoryTableClickHandler);
+            }
+
+            // Guardar referencia para poder removerla luego
+            inventoryTableClickHandler = function(e) {
                 const editBtn = e.target.closest('.edit-product');
                 const deleteBtn = e.target.closest('.delete-product');
-                
+
                 if (editBtn) {
                     const productId = parseInt(editBtn.getAttribute('data-id'));
                     editProduct(productId);
                 }
-                
+
                 if (deleteBtn) {
                     const productId = parseInt(deleteBtn.getAttribute('data-id'));
                     deleteProduct(productId);
                 }
-            }
+            };
+
+            inventoryTable.addEventListener('click', inventoryTableClickHandler);
         } catch (error) {
             console.error('Error agregando eventos de inventario:', error);
         }
@@ -2173,8 +2174,13 @@
             
             // Verificar si el producto ya está en la venta
             const existingItem = currentSaleItems.find(item => item.productId === variablePriceProduct.id);
-            
+
             if (existingItem) {
+                // Verificar que la cantidad total no exceda el stock disponible
+                if (variablePriceProduct.stock < existingItem.quantity + manualQuantity) {
+                    showNotification(`Stock insuficiente. Solo quedan ${variablePriceProduct.stock} unidades disponibles`, 'danger');
+                    return;
+                }
                 existingItem.quantity += manualQuantity;
                 existingItem.subtotal = existingItem.quantity * existingItem.price;
             } else {
@@ -2253,10 +2259,7 @@
             });
             
             totalElement.textContent = `$${formatPrice(total)}`;
-            
-            // Agregar eventos a los controles de cantidad
-            addSaleItemEvents();
-            
+
             // Actualizar cálculo de vuelto
             updateChangeCalculation();
         } catch (error) {
@@ -2264,13 +2267,13 @@
         }
     }
     
-    // Agregar eventos a los items de venta
+    // Agregar eventos a los items de venta - se llama UNA SOLA VEZ en la inicialización
     function addSaleItemEvents() {
         try {
-            // Delegación de eventos para evitar duplicados
             const saleItemsTable = document.getElementById('sale-items');
-            if (!saleItemsTable) return;
-            
+            if (!saleItemsTable || saleItemsTable._eventsAttached) return;
+            saleItemsTable._eventsAttached = true;
+
             saleItemsTable.addEventListener('click', function(e) {
                 const decreaseBtn = e.target.closest('.decrease-quantity');
                 const increaseBtn = e.target.closest('.increase-quantity');
@@ -2884,7 +2887,7 @@
                 inventory: inventory,
                 sales: sales,
                 exportDate: new Date().toISOString(),
-                systemVersion: "1.2.0"
+                systemVersion: "1.2.5"
             };
             
             const dataStr = JSON.stringify(allData, null, 2);
