@@ -148,7 +148,7 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            z-index: 1000;
+            z-index: 9999;
             display: none;
             border-left: 4px solid var(--secondary-color);
         }
@@ -190,7 +190,6 @@
         
         .sale-item {
             border-bottom: 1px solid #dee2e6;
-            padding: 12px 0;
             background: var(--card-bg);
             margin-bottom: 8px;
             border-radius: 6px;
@@ -612,7 +611,7 @@
                                         <tfoot>
                                             <tr>
                                                 <td colspan="3" class="text-end"><strong>Total:</strong></td>
-                                                <td><strong id="sale-total">$0.00</strong></td>
+                                                <td><strong id="sale-total">$0</strong></td>
                                                 <td></td>
                                             </tr>
                                         </tfoot>
@@ -652,10 +651,10 @@
                                         <div class="col-md-12">
                                             <label class="form-label"><strong>Tipo de Tarjeta:</strong></label>
                                             <div class="btn-group w-100" role="group">
-                                                <input type="radio" class="btn-check" name="cardType" id="credito" autocomplete="off" checked>
+                                                <input type="radio" class="btn-check" name="cardType" id="credito" value="credito" autocomplete="off" checked>
                                                 <label class="btn btn-outline-primary" for="credito">Crédito</label>
-                                                
-                                                <input type="radio" class="btn-check" name="cardType" id="debito" autocomplete="off">
+
+                                                <input type="radio" class="btn-check" name="cardType" id="debito" value="debito" autocomplete="off">
                                                 <label class="btn btn-outline-primary" for="debito">Débito</label>
                                             </div>
                                         </div>
@@ -1199,11 +1198,27 @@
     let variablePriceProduct = null;
     let searchTimeout = null;
     let isInitialized = false;
+    let inventoryTableClickHandler = null;
     
+    // =============================================
+    // UTILIDADES GENERALES
+    // =============================================
+
+    // Escapar HTML para prevenir XSS al insertar contenido en innerHTML
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     // =============================================
     // FUNCIONES DE INICIALIZACIÓN SEGURA
     // =============================================
-    
+
     // Función optimizada para obtener ID
     function getNextId(items) {
         let maxId = 0;
@@ -1505,10 +1520,9 @@
             // Limitar tamaño de datos
             const dataStr = JSON.stringify(inventory);
             if (dataStr.length > 4000000) { // ~4MB
-                showNotification('El inventario es muy grande, considere exportar y limpiar', 'warning');
-                clearOldData();
+                showNotification('El inventario es muy grande. Exporte y elimine productos obsoletos.', 'warning');
             }
-            
+
             localStorage.setItem('inventory', dataStr);
             console.log('💾 Inventario guardado:', inventory.length, 'productos');
         } catch (error) {
@@ -1646,21 +1660,16 @@
         }
     }
     
-    // Actualizar estadísticas - MODIFICADO: Condición cambiada a <= 3
+    // Actualizar estadísticas
     function updateStats() {
         try {
             const lowStock = inventory.filter(product => product.stock <= 3).length;
-            
-            const today = getCurrentDate();
-            const todaySales = sales
-                .filter(sale => sale.date === today)
-                .reduce((sum, sale) => sum + sale.total, 0);
-            
+
             const lowStockElement = document.getElementById('low-stock');
             if (lowStockElement) {
                 lowStockElement.textContent = lowStock;
             }
-            
+
             updateLowStockModal();
         } catch (error) {
             console.error('Error actualizando estadísticas:', error);
@@ -1686,8 +1695,8 @@
                 
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${product.name || ''}</td>
-                    <td>${product.category || ''}</td>
+                    <td>${escapeHtml(product.name)}</td>
+                    <td>${escapeHtml(product.category)}</td>
                     <td>${product.stock || 0}</td>
                     <td>$${formatPrice(productPrice)}</td>
                     <td>
@@ -1723,30 +1732,31 @@
     // Agregar eventos de editar y eliminar - MEJORADA
     function addEditDeleteEvents() {
         try {
-            // Usar delegación de eventos para evitar duplicados
             const inventoryTable = document.getElementById('inventory-table');
             if (!inventoryTable) return;
-            
-            // Remover listeners anteriores si existen
-            inventoryTable.removeEventListener('click', handleInventoryTableClick);
-            
-            // Agregar nuevo listener
-            inventoryTable.addEventListener('click', handleInventoryTableClick);
-            
-            function handleInventoryTableClick(e) {
+
+            // Remover listener anterior usando referencia guardada
+            if (inventoryTableClickHandler) {
+                inventoryTable.removeEventListener('click', inventoryTableClickHandler);
+            }
+
+            // Guardar referencia para poder removerla luego
+            inventoryTableClickHandler = function(e) {
                 const editBtn = e.target.closest('.edit-product');
                 const deleteBtn = e.target.closest('.delete-product');
-                
+
                 if (editBtn) {
                     const productId = parseInt(editBtn.getAttribute('data-id'));
                     editProduct(productId);
                 }
-                
+
                 if (deleteBtn) {
                     const productId = parseInt(deleteBtn.getAttribute('data-id'));
                     deleteProduct(productId);
                 }
-            }
+            };
+
+            inventoryTable.addEventListener('click', inventoryTableClickHandler);
         } catch (error) {
             console.error('Error agregando eventos de inventario:', error);
         }
@@ -2173,8 +2183,13 @@
             
             // Verificar si el producto ya está en la venta
             const existingItem = currentSaleItems.find(item => item.productId === variablePriceProduct.id);
-            
+
             if (existingItem) {
+                // Verificar que la cantidad total no exceda el stock disponible
+                if (variablePriceProduct.stock < existingItem.quantity + manualQuantity) {
+                    showNotification(`Stock insuficiente. Solo quedan ${variablePriceProduct.stock} unidades disponibles`, 'danger');
+                    return;
+                }
                 existingItem.quantity += manualQuantity;
                 existingItem.subtotal = existingItem.quantity * existingItem.price;
             } else {
@@ -2253,10 +2268,7 @@
             });
             
             totalElement.textContent = `$${formatPrice(total)}`;
-            
-            // Agregar eventos a los controles de cantidad
-            addSaleItemEvents();
-            
+
             // Actualizar cálculo de vuelto
             updateChangeCalculation();
         } catch (error) {
@@ -2264,13 +2276,13 @@
         }
     }
     
-    // Agregar eventos a los items de venta
+    // Agregar eventos a los items de venta - se llama UNA SOLA VEZ en la inicialización
     function addSaleItemEvents() {
         try {
-            // Delegación de eventos para evitar duplicados
             const saleItemsTable = document.getElementById('sale-items');
-            if (!saleItemsTable) return;
-            
+            if (!saleItemsTable || saleItemsTable._eventsAttached) return;
+            saleItemsTable._eventsAttached = true;
+
             saleItemsTable.addEventListener('click', function(e) {
                 const decreaseBtn = e.target.closest('.decrease-quantity');
                 const increaseBtn = e.target.closest('.increase-quantity');
@@ -2366,7 +2378,13 @@
             showNotification('No hay productos en la venta', 'warning');
             return;
         }
-        
+
+        const processBtn = document.getElementById('process-sale-bottom');
+        if (processBtn) {
+            if (processBtn.disabled) return; // Prevenir doble click
+            processBtn.disabled = true;
+        }
+
         try {
             // Verificar stock de todos los productos
             for (const item of currentSaleItems) {
@@ -2407,7 +2425,7 @@
                 }
             } else if (paymentMethod === 'tarjeta') {
                 const cardTypeRadio = document.querySelector('input[name="cardType"]:checked');
-                cardType = cardTypeRadio ? cardTypeRadio.id : 'credito';
+                cardType = cardTypeRadio ? cardTypeRadio.value : 'credito';
             }
             
             // Actualizar inventario y registrar venta
@@ -2484,9 +2502,11 @@
         } catch (error) {
             console.error('❌ Error procesando venta:', error);
             showNotification('Error procesando venta: ' + error.message, 'danger');
-            
+
             // Intentar recuperar estado
             renderInventory();
+        } finally {
+            if (processBtn) processBtn.disabled = false;
         }
     }
     
@@ -2527,10 +2547,10 @@
                             </div>
                             <span>$${formatPrice(sale.total)}</span>
                         </div>
-                        <small class="text-muted">${sale.date}</small>
+                        <small class="text-muted">${escapeHtml(sale.date)}</small>
                         <div class="mt-1">
                             ${sale.items.map(item => `
-                                <span class="badge bg-light text-dark me-1">${item.name} x${item.quantity}</span>
+                                <span class="badge bg-light text-dark me-1">${escapeHtml(item.name)} x${item.quantity}</span>
                             `).join('')}
                         </div>
                     </div>
@@ -2599,6 +2619,14 @@
             else if (period.id === 'exportRange') {
                 const startDate = document.getElementById('exportStartDate').value;
                 const endDate = document.getElementById('exportEndDate').value;
+                if (!startDate || !endDate) {
+                    showNotification('Por favor seleccione fecha de inicio y fin del rango', 'warning');
+                    return [];
+                }
+                if (startDate > endDate) {
+                    showNotification('La fecha de inicio no puede ser mayor a la fecha de fin', 'warning');
+                    return [];
+                }
                 return sales.filter(sale => {
                     const saleDate = parseDate(sale.date);
                     if (!saleDate) return false;
@@ -2674,13 +2702,18 @@
     }
     
     // Función para actualizar gráficos
-    function updateCharts() {
+    function updateCharts(retryCount = 0) {
+        const MAX_CHART_RETRIES = 10;
         try {
             const topProductsCanvas = document.getElementById('topProductsChart');
             const salesByCategoryCanvas = document.getElementById('salesByCategoryChart');
-            
+
             if (!topProductsCanvas || !salesByCategoryCanvas) {
-                setTimeout(updateCharts, 100);
+                if (retryCount < MAX_CHART_RETRIES) {
+                    setTimeout(() => updateCharts(retryCount + 1), 100);
+                } else {
+                    console.warn('updateCharts: canvas no encontrado después de', MAX_CHART_RETRIES, 'intentos');
+                }
                 return;
             }
             
@@ -2884,7 +2917,7 @@
                 inventory: inventory,
                 sales: sales,
                 exportDate: new Date().toISOString(),
-                systemVersion: "1.2.0"
+                systemVersion: "1.2.5"
             };
             
             const dataStr = JSON.stringify(allData, null, 2);
@@ -3250,6 +3283,9 @@
                 if (parentOption) {
                     parentOption.classList.add('selected');
                 }
+                // Mostrar sección de efectivo ya que es el método por defecto seleccionado
+                const cashPaymentSection = document.getElementById('cash-payment-section');
+                if (cashPaymentSection) cashPaymentSection.style.display = 'block';
             }
             
             // 6. Evento para cuando se ingrese monto en efectivo
