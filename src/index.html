@@ -611,7 +611,7 @@
                                         <tfoot>
                                             <tr>
                                                 <td colspan="3" class="text-end"><strong>Total:</strong></td>
-                                                <td><strong id="sale-total">$0.00</strong></td>
+                                                <td><strong id="sale-total">$0</strong></td>
                                                 <td></td>
                                             </tr>
                                         </tfoot>
@@ -651,10 +651,10 @@
                                         <div class="col-md-12">
                                             <label class="form-label"><strong>Tipo de Tarjeta:</strong></label>
                                             <div class="btn-group w-100" role="group">
-                                                <input type="radio" class="btn-check" name="cardType" id="credito" autocomplete="off" checked>
+                                                <input type="radio" class="btn-check" name="cardType" id="credito" value="credito" autocomplete="off" checked>
                                                 <label class="btn btn-outline-primary" for="credito">Crédito</label>
-                                                
-                                                <input type="radio" class="btn-check" name="cardType" id="debito" autocomplete="off">
+
+                                                <input type="radio" class="btn-check" name="cardType" id="debito" value="debito" autocomplete="off">
                                                 <label class="btn btn-outline-primary" for="debito">Débito</label>
                                             </div>
                                         </div>
@@ -1201,9 +1201,24 @@
     let inventoryTableClickHandler = null;
     
     // =============================================
+    // UTILIDADES GENERALES
+    // =============================================
+
+    // Escapar HTML para prevenir XSS al insertar contenido en innerHTML
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    // =============================================
     // FUNCIONES DE INICIALIZACIÓN SEGURA
     // =============================================
-    
+
     // Función optimizada para obtener ID
     function getNextId(items) {
         let maxId = 0;
@@ -1505,10 +1520,9 @@
             // Limitar tamaño de datos
             const dataStr = JSON.stringify(inventory);
             if (dataStr.length > 4000000) { // ~4MB
-                showNotification('El inventario es muy grande, considere exportar y limpiar', 'warning');
-                clearOldData();
+                showNotification('El inventario es muy grande. Exporte y elimine productos obsoletos.', 'warning');
             }
-            
+
             localStorage.setItem('inventory', dataStr);
             console.log('💾 Inventario guardado:', inventory.length, 'productos');
         } catch (error) {
@@ -1646,21 +1660,16 @@
         }
     }
     
-    // Actualizar estadísticas - MODIFICADO: Condición cambiada a <= 3
+    // Actualizar estadísticas
     function updateStats() {
         try {
             const lowStock = inventory.filter(product => product.stock <= 3).length;
-            
-            const today = getCurrentDate();
-            const todaySales = sales
-                .filter(sale => sale.date === today)
-                .reduce((sum, sale) => sum + sale.total, 0);
-            
+
             const lowStockElement = document.getElementById('low-stock');
             if (lowStockElement) {
                 lowStockElement.textContent = lowStock;
             }
-            
+
             updateLowStockModal();
         } catch (error) {
             console.error('Error actualizando estadísticas:', error);
@@ -1686,8 +1695,8 @@
                 
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${product.name || ''}</td>
-                    <td>${product.category || ''}</td>
+                    <td>${escapeHtml(product.name)}</td>
+                    <td>${escapeHtml(product.category)}</td>
                     <td>${product.stock || 0}</td>
                     <td>$${formatPrice(productPrice)}</td>
                     <td>
@@ -2369,7 +2378,13 @@
             showNotification('No hay productos en la venta', 'warning');
             return;
         }
-        
+
+        const processBtn = document.getElementById('process-sale-bottom');
+        if (processBtn) {
+            if (processBtn.disabled) return; // Prevenir doble click
+            processBtn.disabled = true;
+        }
+
         try {
             // Verificar stock de todos los productos
             for (const item of currentSaleItems) {
@@ -2410,7 +2425,7 @@
                 }
             } else if (paymentMethod === 'tarjeta') {
                 const cardTypeRadio = document.querySelector('input[name="cardType"]:checked');
-                cardType = cardTypeRadio ? cardTypeRadio.id : 'credito';
+                cardType = cardTypeRadio ? cardTypeRadio.value : 'credito';
             }
             
             // Actualizar inventario y registrar venta
@@ -2487,9 +2502,11 @@
         } catch (error) {
             console.error('❌ Error procesando venta:', error);
             showNotification('Error procesando venta: ' + error.message, 'danger');
-            
+
             // Intentar recuperar estado
             renderInventory();
+        } finally {
+            if (processBtn) processBtn.disabled = false;
         }
     }
     
@@ -2530,10 +2547,10 @@
                             </div>
                             <span>$${formatPrice(sale.total)}</span>
                         </div>
-                        <small class="text-muted">${sale.date}</small>
+                        <small class="text-muted">${escapeHtml(sale.date)}</small>
                         <div class="mt-1">
                             ${sale.items.map(item => `
-                                <span class="badge bg-light text-dark me-1">${item.name} x${item.quantity}</span>
+                                <span class="badge bg-light text-dark me-1">${escapeHtml(item.name)} x${item.quantity}</span>
                             `).join('')}
                         </div>
                     </div>
@@ -2602,6 +2619,14 @@
             else if (period.id === 'exportRange') {
                 const startDate = document.getElementById('exportStartDate').value;
                 const endDate = document.getElementById('exportEndDate').value;
+                if (!startDate || !endDate) {
+                    showNotification('Por favor seleccione fecha de inicio y fin del rango', 'warning');
+                    return [];
+                }
+                if (startDate > endDate) {
+                    showNotification('La fecha de inicio no puede ser mayor a la fecha de fin', 'warning');
+                    return [];
+                }
                 return sales.filter(sale => {
                     const saleDate = parseDate(sale.date);
                     if (!saleDate) return false;
@@ -2677,13 +2702,18 @@
     }
     
     // Función para actualizar gráficos
-    function updateCharts() {
+    function updateCharts(retryCount = 0) {
+        const MAX_CHART_RETRIES = 10;
         try {
             const topProductsCanvas = document.getElementById('topProductsChart');
             const salesByCategoryCanvas = document.getElementById('salesByCategoryChart');
-            
+
             if (!topProductsCanvas || !salesByCategoryCanvas) {
-                setTimeout(updateCharts, 100);
+                if (retryCount < MAX_CHART_RETRIES) {
+                    setTimeout(() => updateCharts(retryCount + 1), 100);
+                } else {
+                    console.warn('updateCharts: canvas no encontrado después de', MAX_CHART_RETRIES, 'intentos');
+                }
                 return;
             }
             
@@ -3253,6 +3283,9 @@
                 if (parentOption) {
                     parentOption.classList.add('selected');
                 }
+                // Mostrar sección de efectivo ya que es el método por defecto seleccionado
+                const cashPaymentSection = document.getElementById('cash-payment-section');
+                if (cashPaymentSection) cashPaymentSection.style.display = 'block';
             }
             
             // 6. Evento para cuando se ingrese monto en efectivo

@@ -7,7 +7,8 @@
     "start": "electron .",
     "build": "electron-builder",
     "dist": "electron-builder --publish=never",
-    "pack": "electron-builder --dir"
+    "pack": "electron-builder --dir",
+    "test": "node -e \"global.window={};const code=require('fs').readFileSync('tests/unit-tests.js','utf8');const fn=new Function(code+'\\nreturn runAllTests;');const s=fn()();console.log('\\n✅ Pasaron: '+s.passed+'/'+s.total+' ('+s.rate+'%)');process.exit(s.failed>0?1:0);\""
   },
   "author": "Felipe Martínez",
   "license": "MIT",
