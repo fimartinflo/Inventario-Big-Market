@@ -1,20 +1,27 @@
 {
   "name": "inventario-minimarket",
-  "version": "1.2.5",
+  "version": "2.0.0",
   "description": "Sistema de gestión de inventario y ventas para Big Market SPA",
-  "main": "main.js",
+  "main": "electron/main/index.js",
   "scripts": {
+    "dev": "vite serve src --config vite.config.js",
     "start": "electron .",
-    "build": "electron-builder",
-    "dist": "electron-builder --publish=never",
-    "pack": "electron-builder --dir",
-    "test": "node -e \"global.window={};const code=require('fs').readFileSync('tests/unit-tests.js','utf8');const fn=new Function(code+'\\nreturn runAllTests;');const s=fn()();console.log('\\n✅ Pasaron: '+s.passed+'/'+s.total+' ('+s.rate+'%)');process.exit(s.failed>0?1:0);\""
+    "build": "vite build --config vite.config.js && electron-builder",
+    "test": "vitest run --config vite.config.js",
+    "test:ui": "vitest --ui --config vite.config.js",
+    "test:legacy": "node -e \"global.window={};const code=require('fs').readFileSync('tests/unit-tests.js','utf8');const fn=new Function(code+'\\nreturn runAllTests;');const s=fn()();console.log('\\n✅ Pasaron: '+s.passed+'/'+s.total+' ('+s.rate+'%)');process.exit(s.failed>0?1:0);\""
   },
   "author": "Felipe Martínez",
   "license": "MIT",
   "devDependencies": {
+    "@vitest/ui": "^4.1.2",
+    "@vue/test-utils": "^2.4.6",
     "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "electron-vite": "^5.0.0",
+    "jsdom": "^29.0.1",
+    "vite": "^6.4.1",
+    "vitest": "^4.1.2"
   },
   "build": {
     "appId": "com.bigmarket.inventario",
@@ -23,10 +30,16 @@
       "output": "dist"
     },
     "files": [
+      "electron/**/*",
       "src/**/*",
-      "main.js",
-      "preload.js",
+      "node_modules/better-sqlite3/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/better-sqlite3/build",
+        "to": "better-sqlite3/build"
+      }
     ],
     "win": {
       "target": "nsis",
@@ -39,5 +52,15 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Inventario Big Market"
     }
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^6.7.2",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "better-sqlite3": "^12.8.0",
+    "bootstrap": "^5.3.8",
+    "chart.js": "^4.5.1",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.31",
+    "xlsx": "^0.18.5"
   }
 }

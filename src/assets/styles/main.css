@@ -1,0 +1,29 @@
+/* Bootstrap 5 */
+@import 'bootstrap/dist/css/bootstrap.min.css';
+
+/* FontAwesome 6 Free */
+@import '@fortawesome/fontawesome-free/css/all.min.css';
+
+/* ── Custom variables ────────────────────────────────────────────────────── */
+:root {
+  --bm-green:      #198754;
+  --bm-green-dark: #146c43;
+}
+
+/* ── Global ──────────────────────────────────────────────────────────────── */
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.92rem;
+  background: #f8f9fa;
+}
+
+/* Make scrollbars thin on Windows */
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb  { background: #ccc; border-radius: 3px; }
+::-webkit-scrollbar-track  { background: transparent; }
+
+/* ── Utility ─────────────────────────────────────────────────────────────── */
+.cursor-pointer { cursor: pointer; }
+
+/* ── Table tweaks ────────────────────────────────────────────────────────── */
+.table > :not(caption) > * > * { padding: 0.4rem 0.6rem; }
